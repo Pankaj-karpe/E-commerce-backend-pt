@@ -95,7 +95,11 @@ async def create_ord(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Order processing failed due to a database error.")
 
-    send_order_confirmation_email.delay(current_user.email, new_ord.id)
+    try:
+        send_order_confirmation_email.delay(current_user.email, new_ord.id)
+    except Exception as e:
+        print(f"⚠️ Celery broker unreachable: {e}")   
+
     return new_ord
 
 # READ ONE ORDER
@@ -182,11 +186,15 @@ async def update_order_status(
     db.refresh(exist_ord, attribute_names=["user", "items"])
 
     # Dispatch Celery background tasks based on updated status
-    if new_status.upper() == "SHIPPED":
-        process_order_shipped_email.delay(current_user.email, exist_ord.id)
-    elif new_status.upper() == "CANCELLED":
-        process_order_cancellation.delay(current_user.email, exist_ord.id)
+    try: 
+        if new_status.upper() == "SHIPPED":
+            process_order_shipped_email.delay(current_user.email, exist_ord.id)
+        elif new_status.upper() == "CANCELLED":
+            process_order_cancellation.delay(current_user.email, exist_ord.id)
 
+    except Exception as e:
+        print(f"⚠️ Celery broker unreachable: {e}")
+        
     return exist_ord
     
 
