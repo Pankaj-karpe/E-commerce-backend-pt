@@ -59,12 +59,16 @@ async def create_prd(
         db.commit()
         for prd in new_prd:
             db.refresh(prd)
-            notify_users_new_product.delay(prd.title, float(prd.price))
-        return new_prd
     except Exception:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to insert products due to a database error.")
-
+    for prd in new_prd:
+        try:
+            notify_users_new_product.delay(prd.title, float(prd.price))
+        except Exception as e:
+            print(f"⚠️ Celery task dispatch failed: {e}")
+    
+    return new_prd
 
 # UPDATE PRODUCT (Requires Seller Role)
 @router.put("/{id}", response_model=schema.prd_out)
