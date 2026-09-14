@@ -7,7 +7,7 @@ from celery.schedules import crontab
 # FIX: was `BROKEN_URL` (typo) — renamed to `BROKER_URL` for clarity.
 # This was cosmetic only (the variable was just referenced below), but the
 # name was misleading enough to read as a bug on first glance.
-BROKER_URL = f"amqp://guest:guest@{settings.RABBITMQ_HOST}:{settings.RABBITMQ_PORT}//"
+BROKER_URL = settings.CELERY_BROKER_URL or "amqp://guest:guest@localhost:5672//"
 
 # RPC result backend (stores results back in RabbitMQ transiently)
 BACKEND_URL = "rpc://"
