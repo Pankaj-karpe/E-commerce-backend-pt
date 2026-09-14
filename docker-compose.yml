@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # --- DATABASE service ---
+  db:
+    image: postgres:15-alpine
+    container_name: shop
+    environment: 
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- Message Broker Service ---
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: shop_rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- FastAPI Web API Service ---
+  api:
+    image: pankajkarpe1/shop-api:latest
+    container_name: shop_api
+    command: ["/home/nonroot/.local/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]    
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=${DB_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # --- Celery Worker Service ---
+  celery_worker:
+    image: pankajkarpe1/shop-api:latest
+    container_name: shop_celery_worker
+    command: ["/home/nonroot/.local/bin/celery", "-A", "app.redis.celery_app", "worker", "--loglevel=info", "-c", "4", "-Q", "email_queue,notification_queue,analytics_queue,dead_letter_queue"] 
+    environment:
+      - DATABASE_URL=${DB_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # --- Celery Beat Scheduler Service ---
+  celery_beat:
+    image: pankajkarpe1/shop-api:latest
+    container_name: shop_celery_beat
+    command: ["/home/nonroot/.local/bin/celery", "-A", "app.redis.celery_app", "beat", "--loglevel=info"]
+    environment:
+      - DATABASE_URL=${DB_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
