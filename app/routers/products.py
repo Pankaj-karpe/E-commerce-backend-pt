@@ -24,7 +24,7 @@ async def list_all_products(
 ):
     query = db.query(models.Product)
     if search:
-        query.query.filter(models.Product.title.ilike(f"%{search}"))
+        query.query.filter(models.Product.title.ilike(f"%{search}%"))
     if min_price is not None:
         query.query.filter(models.Product.price >= min_price)
     if max_price is not None:
