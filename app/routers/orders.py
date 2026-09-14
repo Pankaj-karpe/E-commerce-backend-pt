@@ -1,6 +1,6 @@
 from typing import List, Optional
 from decimal import Decimal
-from fastapi import status, HTTPException, Depends, APIRouter, Response, Query
+from fastapi import status as http_status, HTTPException, Depends, APIRouter, Response, Query
 from sqlalchemy.orm import Session
 from ..database import get_db
 from .. import models, schema, oauth2
@@ -34,7 +34,7 @@ async def list_all_orders(
 
 
 # CREATE ORDER
-@router.post("/", response_model=schema.ord_out, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=schema.ord_out, status_code=http_status.HTTP_201_CREATED)
 async def create_ord(
     ord: schema.ord_create, 
     db: Session = Depends(get_db),
@@ -51,13 +51,13 @@ async def create_ord(
             # Check product existence
             if not product:
                 raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, 
+                    status_code=http_status.HTTP_404_NOT_FOUND, 
                     detail=f"Product with id {item.product_id} not found"
                 )
             
             # Check stock availability
             if product.stock < item.quantity:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, 
+                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, 
                 detail=f"Product '{product.title}' is out of stock or has insufficient quantity (Availabel stock: {product.stock})")
 
             # Decrement product stock in database session
@@ -93,7 +93,7 @@ async def create_ord(
         raise
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Order processing failed due to a database error.")
+        raise HTTPException(status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Order processing failed due to a database error.")
 
     try:
         send_order_confirmation_email.delay(current_user.email, new_ord.id)
@@ -112,10 +112,10 @@ async def get_one_ord(
     ord = db.query(models.Order).filter(models.Order.id == id).first()
 
     if not ord:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Order with id {id} not found")
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=f"Order with id {id} not found")
 
     if ord.user_id != current_user.id and current_user.role not in ["admin", "seller"]:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this order")
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Not authorized to access this order")
 
     return ord
 
@@ -131,10 +131,10 @@ async def update_ord(
     exist_ord = db.query(models.Order).filter(models.Order.id == id).first()
 
     if not exist_ord:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Order with id {id} not found")
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=f"Order with id {id} not found")
 
     if exist_ord.user_id != current_user.id and current_user.role not in ["admin", "seller"]:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to modify this order")
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Not authorized to modify this order")
 
     # Extract non-relational fields and update Order
     update_data = ord.model_dump(exclude_unset=True)
@@ -161,7 +161,7 @@ async def update_ord(
         return exist_ord
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update order.")
+        raise HTTPException(status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update order.")
 
 
 ### Update Order Status & Trigger Tasks
@@ -194,12 +194,12 @@ async def update_order_status(
 
     except Exception as e:
         print(f"⚠️ Celery broker unreachable: {e}")
-        
+
     return exist_ord
     
 
 # DELETE ORDER
-@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{id}", status_code=http_status.HTTP_204_NO_CONTENT)
 async def delete_ord(
     id: int, 
     db: Session = Depends(get_db),
@@ -209,20 +209,20 @@ async def delete_ord(
     exist_ord = ord_query.first()
     
     if not exist_ord:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Order with id {id} not found")
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=f"Order with id {id} not found")
 
     if exist_ord.user_id != current_user.id and current_user.role not in ["admin", "seller"]:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this order")
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this order")
 
     try:
         # Restore product inventory stock before deleting order
         for item in exist_ord.items:
             product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
             if product:
-                product.stock += item.quantiy
+                product.stock += item.quantity
         db.delete(exist_ord)
         db.commit()
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        return Response(status_code=http_status.HTTP_204_NO_CONTENT)
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to cancel and delete order.")
+        raise HTTPException(status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to cancel and delete order.")
